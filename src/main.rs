@@ -44,6 +44,23 @@ impl <T> Graph<T> {
         else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
     }
 
+
+    
+    pub fn go_to(&self, from_node: NodeIndex, node_index: NodeIndex) -> NodeIndex {
+        if self.is_node_valid(&node_index) && self.is_node_valid(&from_node) {
+            if self.links.len() < from_node.index_ {
+                match self.links[from_node.index_].get(node_index.index_) {
+                    Some(index) => {return NodeIndex { index_: *index };}
+                    None => {panic!()}
+                }
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    }
+
     #[inline(always)]
     pub fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
         if node_index.index_ >= self.count { false }
@@ -98,6 +115,10 @@ impl <T> Graph<T> {
 
 #[derive(Debug, Clone, Copy)]
 struct NodeIndex {
+    index_: usize
+}
+
+struct NodeLI {
     index_: usize
 }
 
