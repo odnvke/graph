@@ -3,7 +3,7 @@ fn main() {
 
     let node0 = g.get_new_node(10);
     let node1 = g.get_new_node(20);
-    let node2 = g.get_new_node(20);
+    let node2 = g.get_new_node(30);
 
     g.connect(node0, node1);
     g.connect(node2, node1);
@@ -13,12 +13,14 @@ fn main() {
     println!("{:?}", g.get_links_from_node_panic(&node1));
 
     g.del(node0);
+
+    println!("{:?}", g.bfs(node1));
 }
 
 struct Graph<T> {
     count: usize,
     values: Vec<T>,
-    links: Vec<Vec<usize>>,
+    links: Vec<Vec<NodeIndex>>,
     free: Vec<usize>,
 }
 
@@ -30,6 +32,7 @@ impl <T> Graph<T> {
     pub fn get_new_node(&mut self, value: T) -> NodeIndex {
         if self.free.is_empty() {
             self.values.push(value);
+            self.links.push(Vec::new());
             self.count += 1;
             NodeIndex { index_: self.values.len()-1}
         } else {
@@ -42,19 +45,11 @@ impl <T> Graph<T> {
     pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
         if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index_)}
         if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index_)}
-        let n = n_i.index_;
-        let n2 = n2_i.index_;
-        loop { 
-            if n < self.links.len() && n2 < self.links.len() {
-                if self.links[n].contains(&n2) { panic!("\naddr {} already connect with {}\n", n, n2) }
-                break;
-            } else {
-                self.links.push(Vec::new());
-            }
-        }
 
-        self.links[n].push(n2);
-        self.links[n2].push(n);
+        if self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already connect with {}", n_i.index_, n2_i.index_) }
+
+        self.links[n_i.index_].push(n2_i);
+        self.links[n2_i.index_].push(n_i);
     }
 
     pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
@@ -74,22 +69,92 @@ impl <T> Graph<T> {
     }
 
     pub fn del(&mut self, node_index: NodeIndex) {
-        if !self.is_node_valid(&node_index) { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
-        let mut positions = self.get_links_from_node_panic_mut(&node_index);
-
-        loop {
-            let pos = positions.pop().unwrap() else { break };
-
-            
+        if !self.is_node_valid(&node_index) { 
+            panic!("\n  >>  addr {} invalid\n", node_index.index_);
         }
+        
+        let idx = node_index.index_;
+        
+        
+        let links: Vec<usize> = 
+            if idx < self.links.len() { self.links[idx].clone() } 
+            else { Vec::new() };
+        
+        for neighbor_idx in links {     
+            self.disconnect(NodeIndex { index_: neighbor_idx }, node_index);
+        }
+        
+        self.free.push(idx);
     }
 
-
+    pub fn bfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
+        if !self.is_node_valid(&start) {
+            panic!("\n  >>  addr {} invalid\n", start.index_);
+        }
+        
+        use std::collections::VecDeque;
+        use std::collections::HashSet;
+        
+        let mut visited = HashSet::new();
+        let mut result = Vec::new();
+        let mut queue = VecDeque::new();
+        
+        visited.insert(start);
+        queue.push_back(start);
+        
+        while let Some(node) = queue.pop_front() {
+            result.push(node);
+            
+            // Получаем соседей
+            let neighbors = self.get_links_from_node_panic(&node);
+            
+            for &neighbor_idx in neighbors {
+                let neighbor = NodeIndex { index_: neighbor_idx };
+                
+                if !visited.contains(&neighbor) {
+                    visited.insert(neighbor);
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        
+        result
+    }
+    
+    pub fn dfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
+        if !self.is_node_valid(&start) {
+            panic!("\n  >>  addr {} invalid\n", start.index_);
+        }
+        
+        use std::collections::HashSet;
+        
+        let mut visited = HashSet::new();
+        let mut result = Vec::new();
+        let mut stack = vec![start];
+        
+        while let Some(node) = stack.pop() {
+            if !visited.contains(&node) {
+                visited.insert(node);
+                result.push(node);
+                
+                // Получаем соседей в обратном порядке для сохранения порядка
+                let neighbors = self.get_links_from_node_panic(&node);
+                for &neighbor_idx in neighbors.iter().rev() {
+                    let neighbor = NodeIndex { index_: neighbor_idx };
+                    if !visited.contains(&neighbor) {
+                        stack.push(neighbor);
+                    }
+                }
+            }
+        }
+        
+        result
+    }
 
     //###########################################################
     // ===  ===  ===  ===  ===  util func  ===  ===  ===  ===  ==
     //###########################################################
-    pub fn get_first_node(&self) -> Option<NodeIndex> {
+    pub fn first_node(&self) -> Option<NodeIndex> {
         if self.values.is_empty() { None } 
         else { Some(NodeIndex { index_: 0 }) }
     }
@@ -105,7 +170,7 @@ impl <T> Graph<T> {
     }
     
     //#[inline(always)]
-    fn get_links_from_node_panic(&mut self, node_index: &NodeIndex) -> &Vec<usize> {
+    fn get_links_from_node_panic(&self, node_index: &NodeIndex) -> &Vec<usize> {
         if self.is_node_valid(node_index) {
             if self.links.len() > node_index.index_ { &self.links[node_index.index_] } 
             else { panic!("\n  >>  no links with {} addr", node_index.index_) }
@@ -123,7 +188,7 @@ impl <T> Graph<T> {
     }
 
     //#[inline(always)]
-    fn is_connect_panic(&mut self, n_i: &NodeIndex, n2_i: &NodeIndex) -> bool {
+    fn is_connect_panic(&self, n_i: &NodeIndex, n2_i: &NodeIndex) -> bool {
         if !self.is_node_valid(n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index_) }
         if !self.is_node_valid(n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
 
@@ -135,7 +200,7 @@ impl <T> Graph<T> {
     //#[inline(always)]
     pub fn get_links_from_node(&mut self, node_index: &NodeIndex) -> Option<&Vec<usize>> {
         if self.is_node_valid(node_index) {
-            if self.links.len() > node_index.index_ { Some(&mut self.links[node_index.index_]) } 
+            if self.links.len() > node_index.index_ { Some(&self.links[node_index.index_]) } 
             else { None }
         } 
         else { None }
@@ -149,7 +214,7 @@ impl <T> Graph<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 struct NodeIndex {
     index_: usize
 }
@@ -204,11 +269,11 @@ mod tests {
         let mut graph = Graph::new();
         
         // Пустой граф
-        assert!(graph.get_first_node().is_none());
+        assert!(graph.first_node().is_none());
         
         // С узлами
         graph.get_new_node(42);
-        let first = graph.get_first_node().unwrap();
+        let first = graph.first_node().unwrap();
         assert_eq!(*graph.get_value_ref(first), 42);
     }
 
