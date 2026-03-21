@@ -1,5 +1,18 @@
 fn main() {
+    let mut g: Graph<i32> = Graph::new();
 
+    let node0 = g.get_new_node(10);
+    let node1 = g.get_new_node(20);
+    let node2 = g.get_new_node(20);
+
+    g.connect(node0, node1);
+    g.connect(node2, node1);
+    g.connect(node2, node0);
+
+    println!("{:?}", g.get_links_from_node_panic(&node0));
+    println!("{:?}", g.get_links_from_node_panic(&node1));
+
+    g.del(node0);
 }
 
 struct Graph<T> {
@@ -26,12 +39,59 @@ impl <T> Graph<T> {
         }
     } 
 
-    pub fn get_first_node(&self) -> Option<NodeIndex> {
-        if self.values.is_empty() {
-            None
-        } else {
-            Some(NodeIndex { index_: 0 })
+    pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
+        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index_)}
+        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index_)}
+        let n = n_i.index_;
+        let n2 = n2_i.index_;
+        loop { 
+            if n < self.links.len() && n2 < self.links.len() {
+                if self.links[n].contains(&n2) { panic!("\naddr {} already connect with {}\n", n, n2) }
+                break;
+            } else {
+                self.links.push(Vec::new());
+            }
         }
+
+        self.links[n].push(n2);
+        self.links[n2].push(n);
+    }
+
+    pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
+        if !self.is_node_valid(&n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index_) }
+        if !self.is_node_valid(&n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
+
+        if !self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already not connect with {}", n_i.index_, n2_i.index_) }
+
+        let n = n_i.index_;
+        let n2 = n2_i.index_;
+
+        let pos_in_min = self.links[n2].iter().position(|link| *link == n).unwrap();
+        let pos_in_max = self.links[n].iter().position(|link| *link == n2).unwrap();
+        
+        self.links[n2].swap_remove(pos_in_min);
+        self.links[n].swap_remove(pos_in_max);
+    }
+
+    pub fn del(&mut self, node_index: NodeIndex) {
+        if !self.is_node_valid(&node_index) { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+        let mut positions = self.get_links_from_node_panic_mut(&node_index);
+
+        loop {
+            let pos = positions.pop().unwrap() else { break };
+
+            
+        }
+    }
+
+
+
+    //###########################################################
+    // ===  ===  ===  ===  ===  util func  ===  ===  ===  ===  ==
+    //###########################################################
+    pub fn get_first_node(&self) -> Option<NodeIndex> {
+        if self.values.is_empty() { None } 
+        else { Some(NodeIndex { index_: 0 }) }
     }
 
     pub fn get_value_ref(&self, node_index: NodeIndex) -> &T {
@@ -43,82 +103,54 @@ impl <T> Graph<T> {
         if self.is_node_valid(&node_index) { &mut self.values[node_index.index_]}
         else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
     }
-
-
     
-    pub fn go_to(&self, from_node: NodeIndex, node_index: NodeIndex) -> NodeIndex {
-        if self.is_node_valid(&node_index) && self.is_node_valid(&from_node) {
-            if self.links.len() < from_node.index_ {
-                match self.links[from_node.index_].get(node_index.index_) {
-                    Some(index) => {return NodeIndex { index_: *index };}
-                    None => {panic!()}
-                }
-            } else {
-                panic!()
-            }
-        } else {
-            panic!()
-        }
+    //#[inline(always)]
+    fn get_links_from_node_panic(&mut self, node_index: &NodeIndex) -> &Vec<usize> {
+        if self.is_node_valid(node_index) {
+            if self.links.len() > node_index.index_ { &self.links[node_index.index_] } 
+            else { panic!("\n  >>  no links with {} addr", node_index.index_) }
+        } 
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
     }
 
-    #[inline(always)]
+    //#[inline(always)]
+    fn get_links_from_node_panic_mut(&mut self, node_index: &NodeIndex) -> &mut Vec<usize> {
+        if self.is_node_valid(node_index) {
+            if self.links.len() > node_index.index_ { &mut self.links[node_index.index_] } 
+            else { panic!("\n  >>  no links with {} addr", node_index.index_) }
+        } 
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+    }
+
+    //#[inline(always)]
+    fn is_connect_panic(&mut self, n_i: &NodeIndex, n2_i: &NodeIndex) -> bool {
+        if !self.is_node_valid(n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index_) }
+        if !self.is_node_valid(n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
+
+        if self.links.len() <= n_i.index_ { false } 
+        else if self.links[n_i.index_].contains(&n2_i.index_) { true }
+        else { false } 
+    }
+
+    //#[inline(always)]
+    pub fn get_links_from_node(&mut self, node_index: &NodeIndex) -> Option<&Vec<usize>> {
+        if self.is_node_valid(node_index) {
+            if self.links.len() > node_index.index_ { Some(&mut self.links[node_index.index_]) } 
+            else { None }
+        } 
+        else { None }
+    }
+
+    //#[inline(always)]
     pub fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
         if node_index.index_ >= self.count { false }
         else if self.free.contains(&node_index.index_) { false }
         else { true }
     }
-
-    pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index_)}
-        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index_)}
-        
-        let (min, max) = 
-            if n_i.index_ < n2_i.index_ { (n_i.index_, n2_i.index_) }
-            else                        { (n2_i.index_, n_i.index_) };
-
-        loop { 
-            if min < self.links.len() && max < self.links.len() {
-                if self.links[min].contains(&max) { panic!("\naddr {} already connect with {}\n", n_i.index_, n2_i.index_) }
-                break;
-            } else {
-                self.links.push(Vec::new());
-            }
-        }
-
-        self.links[min].push(max);
-        self.links[max].push(min);
-    }
-
-    pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index_)}
-        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index_)}
-
-        let (min, max) = 
-            if n_i.index_ < n2_i.index_ { (n_i.index_, n2_i.index_) }
-            else                        { (n2_i.index_, n_i.index_) };
-
-        if min < self.links.len() {
-            if (!self.links[min].contains(&max)) {
-                panic!("\naddr {} not connect with {}\n", n_i.index_, n2_i.index_)
-            }
-        } else {
-                panic!("\naddr {} not connect with any node\n", min)
-        }
-
-        let pos_in_min = self.links[min].iter().position(|link| *link == max).unwrap();
-        let pos_in_max = self.links[max].iter().position(|link| *link == min).unwrap();
-        
-        self.links[min].swap_remove(pos_in_min);
-        self.links[max].swap_remove(pos_in_max);
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct NodeIndex {
-    index_: usize
-}
-
-struct NodeLI {
     index_: usize
 }
 
@@ -277,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_free_list_reuse() {
-        let mut graph: Graph<i32> = Graph::new();
+        let mut _graph: Graph<i32> = Graph::new();
         
         // Создаем узел и удаляем его (но в нашей реализации нет удаления)
         // Для теста reuse мы можем использовать тот факт, что free не пуст только при удалении
