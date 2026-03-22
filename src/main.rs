@@ -58,14 +58,14 @@ impl <T> Graph<T> {
 
         if !self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already not connect with {}", n_i.index_, n2_i.index_) }
 
-        let n = n_i.index_;
-        let n2 = n2_i.index_;
+        let n = n_i;
+        let n2 = n2_i;
 
-        let pos_in_min = self.links[n2].iter().position(|link| *link == n).unwrap();
-        let pos_in_max = self.links[n].iter().position(|link| *link == n2).unwrap();
+        let pos_in_min = self.links[n2.index_].iter().position(|link| *link == n).unwrap();
+        let pos_in_max = self.links[n.index_].iter().position(|link| *link == n2).unwrap();
         
-        self.links[n2].swap_remove(pos_in_min);
-        self.links[n].swap_remove(pos_in_max);
+        self.links[n2.index_].swap_remove(pos_in_min);
+        self.links[n.index_].swap_remove(pos_in_max);
     }
 
     pub fn del(&mut self, node_index: NodeIndex) {
@@ -76,12 +76,12 @@ impl <T> Graph<T> {
         let idx = node_index.index_;
         
         
-        let links: Vec<usize> = 
+        let links: Vec<NodeIndex> = 
             if idx < self.links.len() { self.links[idx].clone() } 
             else { Vec::new() };
         
         for neighbor_idx in links {     
-            self.disconnect(NodeIndex { index_: neighbor_idx }, node_index);
+            self.disconnect(neighbor_idx , node_index);
         }
         
         self.free.push(idx);
@@ -109,7 +109,7 @@ impl <T> Graph<T> {
             let neighbors = self.get_links_from_node_panic(&node);
             
             for &neighbor_idx in neighbors {
-                let neighbor = NodeIndex { index_: neighbor_idx };
+                let neighbor = neighbor_idx;
                 
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
@@ -140,7 +140,7 @@ impl <T> Graph<T> {
                 // Получаем соседей в обратном порядке для сохранения порядка
                 let neighbors = self.get_links_from_node_panic(&node);
                 for &neighbor_idx in neighbors.iter().rev() {
-                    let neighbor = NodeIndex { index_: neighbor_idx };
+                    let neighbor = neighbor_idx;
                     if !visited.contains(&neighbor) {
                         stack.push(neighbor);
                     }
@@ -170,7 +170,7 @@ impl <T> Graph<T> {
     }
     
     //#[inline(always)]
-    fn get_links_from_node_panic(&self, node_index: &NodeIndex) -> &Vec<usize> {
+    fn get_links_from_node_panic(&self, node_index: &NodeIndex) -> &Vec<NodeIndex> {
         if self.is_node_valid(node_index) {
             if self.links.len() > node_index.index_ { &self.links[node_index.index_] } 
             else { panic!("\n  >>  no links with {} addr", node_index.index_) }
@@ -179,7 +179,7 @@ impl <T> Graph<T> {
     }
 
     //#[inline(always)]
-    fn get_links_from_node_panic_mut(&mut self, node_index: &NodeIndex) -> &mut Vec<usize> {
+    fn get_links_from_node_panic_mut(&mut self, node_index: &NodeIndex) -> &mut Vec<NodeIndex> {
         if self.is_node_valid(node_index) {
             if self.links.len() > node_index.index_ { &mut self.links[node_index.index_] } 
             else { panic!("\n  >>  no links with {} addr", node_index.index_) }
@@ -193,12 +193,12 @@ impl <T> Graph<T> {
         if !self.is_node_valid(n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
 
         if self.links.len() <= n_i.index_ { false } 
-        else if self.links[n_i.index_].contains(&n2_i.index_) { true }
+        else if self.links[n_i.index_].contains(&n2_i) { true }
         else { false } 
     }
 
     //#[inline(always)]
-    pub fn get_links_from_node(&mut self, node_index: &NodeIndex) -> Option<&Vec<usize>> {
+    pub fn get_links_from_node(&mut self, node_index: &NodeIndex) -> Option<&Vec<NodeIndex>> {
         if self.is_node_valid(node_index) {
             if self.links.len() > node_index.index_ { Some(&self.links[node_index.index_]) } 
             else { None }
@@ -318,13 +318,13 @@ mod tests {
         graph.connect(node1, node2);
         
         // Проверяем, что связи добавились
-        assert!(graph.links[node1.index_].contains(&node2.index_));
-        assert!(graph.links[node2.index_].contains(&node1.index_));
+        assert!(graph.links[node1.index_].contains(&node2));
+        assert!(graph.links[node2.index_].contains(&node1));
         
         // Добавляем еще одну связь
         graph.connect(node1, node3);
-        assert!(graph.links[node1.index_].contains(&node3.index_));
-        assert!(graph.links[node3.index_].contains(&node1.index_));
+        assert!(graph.links[node1.index_].contains(&node3));
+        assert!(graph.links[node3.index_].contains(&node1));
     }
 
     #[test]
@@ -355,11 +355,11 @@ mod tests {
         let node2 = graph.get_new_node(100);
         
         graph.connect(node1, node2);
-        assert!(graph.links[node1.index_].contains(&node2.index_));
+        assert!(graph.links[node1.index_].contains(&node2));
         
         graph.disconnect(node1, node2);
-        assert!(!graph.links[node1.index_].contains(&node2.index_));
-        assert!(!graph.links[node2.index_].contains(&node1.index_));
+        assert!(!graph.links[node1.index_].contains(&node2));
+        assert!(!graph.links[node2.index_].contains(&node1));
     }
 
     #[test]
@@ -401,7 +401,7 @@ mod tests {
             assert_eq!(graph.links[nodes[i].index_].len(), nodes.len() - 1);
             for j in 0..nodes.len() {
                 if i != j {
-                    assert!(graph.links[nodes[i].index_].contains(&nodes[j].index_));
+                    assert!(graph.links[nodes[i].index_].contains(&nodes[j]));
                 }
             }
         }
@@ -411,13 +411,13 @@ mod tests {
         graph.disconnect(nodes[0], nodes[2]);
         
         // Проверяем результат
-        assert!(!graph.links[nodes[0].index_].contains(&nodes[1].index_));
-        assert!(!graph.links[nodes[1].index_].contains(&nodes[0].index_));
-        assert!(!graph.links[nodes[0].index_].contains(&nodes[2].index_));
-        assert!(!graph.links[nodes[2].index_].contains(&nodes[0].index_));
+        assert!(!graph.links[nodes[0].index_].contains(&nodes[1]));
+        assert!(!graph.links[nodes[1].index_].contains(&nodes[0]));
+        assert!(!graph.links[nodes[0].index_].contains(&nodes[2]));
+        assert!(!graph.links[nodes[2].index_].contains(&nodes[0]));
         
         // Проверяем остальные связи
-        assert!(graph.links[nodes[0].index_].contains(&nodes[3].index_));
-        assert!(graph.links[nodes[3].index_].contains(&nodes[0].index_));
+        assert!(graph.links[nodes[0].index_].contains(&nodes[3]));
+        assert!(graph.links[nodes[3].index_].contains(&nodes[0]));
     }
 }
