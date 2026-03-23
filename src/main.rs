@@ -1,3 +1,6 @@
+use core::fmt;
+use std::fmt::Debug;
+
 fn main() {
     let mut g: Graph<i32> = Graph::new();
 
@@ -14,7 +17,7 @@ fn main() {
 
     g.del(node0);
 
-    println!("{:?}", g.bfs(node1));
+    println!("{:?}", g);
 }
 
 struct Graph<T> {
@@ -22,6 +25,24 @@ struct Graph<T> {
     values: Vec<T>,
     links: Vec<Vec<NodeIndex>>,
     free: Vec<usize>,
+}
+
+impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut _str = String::new();
+        
+        for (i, elem) in self.links.iter().enumerate() {
+            if !elem.is_empty() {
+                _str.push_str(format!("  from: {}    to: ", i).as_str());
+                for _s in elem {
+                    _str.push_str(format!("{} ", _s.index_).as_str());
+                }
+                _str.push('\n');
+            }
+        }
+
+        write!(f, "\nGraph {{\n--------------\nnodes:\n{:#?}\n--------------\nedges:\n{}}}", self.values, _str)
+    }
 }
 
 impl <T> Graph<T> {
@@ -149,6 +170,22 @@ impl <T> Graph<T> {
         }
         
         result
+    }
+
+    pub fn iter_node(&self) -> impl Iterator<Item = NodeIndex> + '_ {
+        (0..self.values.len())
+            .filter(|&i| !self.free.contains(&i))
+            .map(|i| NodeIndex { index_: i })
+    }
+
+    pub fn iter_value(&self) -> impl Iterator<Item = &T> + '_ {
+        self.iter_node()
+            .map(move |node| &self.values[node.index_])
+    }
+
+    pub fn has_node(&self, node_index: &NodeIndex) -> bool {
+        if self.is_node_valid(node_index) { true }
+        else { false }
     }
 
     //###########################################################
