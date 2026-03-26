@@ -4,23 +4,23 @@ use std::fmt::Debug;
 fn main() {
     let mut g: Graph<i32> = Graph::new();
 
-    let node0 = g.get_new_node(10);
-    let node1 = g.get_new_node(20);
-    let node2 = g.get_new_node(30);
+    let mut nodes = Vec::new();
 
-    g.connect(node0, node1);
-    g.connect(node2, node1);
-    g.connect(node2, node0);
+    for i in 0..10_000 {
+        nodes.push(g.get_new_node(i));
+    }
 
-    println!("{:?}", g.get_links_from_node_panic(&node0));
-    println!("{:?}", g.get_links_from_node_panic(&node1));
+    g.connect_all(&nodes);
 
-    g.del(node0);
+    //println!("{:?}", g.get_links_from_node_panic(&nodes[0]));
+    //println!("{:?}", g.get_links_from_node_panic(&nodes[1]));
 
-    println!("{:?}", g);
+    g.del(nodes[2]);
+
+    //println!("{:?}", g);
 }
 
-struct Graph<T> {
+pub struct Graph<T> {
     count: usize,
     values: Vec<T>,
     links: Vec<Vec<NodeIndex>>,
@@ -35,13 +35,20 @@ impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
             if !elem.is_empty() {
                 _str.push_str(format!("  from: {}    to: ", i).as_str());
                 for _s in elem {
-                    _str.push_str(format!("{} ", _s.index_).as_str());
+                    _str.push_str(format!("{} ", _s.index).as_str());
                 }
                 _str.push('\n');
             }
         }
 
         write!(f, "\nGraph {{\n--------------\nnodes:\n{:#?}\n--------------\nedges:\n{}}}", self.values, _str)
+    }
+}
+
+impl <T> Graph<T> where T: Eq {
+    pub fn find(self, value: T) -> Option<NodeIndex> {
+        self.iter_node()
+            .find(|node_index| self.values[node_index.index] == value)
     }
 }
 
@@ -55,46 +62,54 @@ impl <T> Graph<T> {
             self.values.push(value);
             self.links.push(Vec::new());
             self.count += 1;
-            NodeIndex { index_: self.values.len()-1}
+            NodeIndex { index: self.values.len()-1}
         } else {
             let idx = self.free.pop().unwrap();
             self.values[idx] = value;
-            NodeIndex { index_: idx }
+            NodeIndex { index: idx }
         }
     } 
 
+    pub fn connect_panic(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
+        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index)}
+        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index)}
+
+        if self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already connect with {}", n_i.index, n2_i.index) }
+
+        self.links[n_i.index].push(n2_i);
+        self.links[n2_i.index].push(n_i);
+    }
+
     pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index_)}
-        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index_)}
+        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index)}
+        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index)}
 
-        if self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already connect with {}", n_i.index_, n2_i.index_) }
-
-        self.links[n_i.index_].push(n2_i);
-        self.links[n2_i.index_].push(n_i);
+        self.links[n_i.index].push(n2_i);
+        self.links[n2_i.index].push(n_i);
     }
 
     pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index_) }
-        if !self.is_node_valid(&n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
+        if !self.is_node_valid(&n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index) }
+        if !self.is_node_valid(&n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index) }
 
-        if !self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already not connect with {}", n_i.index_, n2_i.index_) }
+        if !self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already not connect with {}", n_i.index, n2_i.index) }
 
         let n = n_i;
         let n2 = n2_i;
 
-        let pos_in_min = self.links[n2.index_].iter().position(|link| *link == n).unwrap();
-        let pos_in_max = self.links[n.index_].iter().position(|link| *link == n2).unwrap();
+        let pos_in_min = self.links[n2.index].iter().position(|link| *link == n).unwrap();
+        let pos_in_max = self.links[n.index].iter().position(|link| *link == n2).unwrap();
         
-        self.links[n2.index_].swap_remove(pos_in_min);
-        self.links[n.index_].swap_remove(pos_in_max);
+        self.links[n2.index].swap_remove(pos_in_min);
+        self.links[n.index].swap_remove(pos_in_max);
     }
 
     pub fn del(&mut self, node_index: NodeIndex) {
         if !self.is_node_valid(&node_index) { 
-            panic!("\n  >>  addr {} invalid\n", node_index.index_);
+            panic!("\n  >>  addr {} invalid\n", node_index.index);
         }
         
-        let idx = node_index.index_;
+        let idx = node_index.index;
         
         
         let links: Vec<NodeIndex> = 
@@ -110,7 +125,7 @@ impl <T> Graph<T> {
 
     pub fn bfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
         if !self.is_node_valid(&start) {
-            panic!("\n  >>  addr {} invalid\n", start.index_);
+            panic!("\n  >>  addr {} invalid\n", start.index);
         }
         
         use std::collections::VecDeque;
@@ -144,7 +159,7 @@ impl <T> Graph<T> {
     
     pub fn dfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
         if !self.is_node_valid(&start) {
-            panic!("\n  >>  addr {} invalid\n", start.index_);
+            panic!("\n  >>  addr {} invalid\n", start.index);
         }
         
         use std::collections::HashSet;
@@ -175,12 +190,12 @@ impl <T> Graph<T> {
     pub fn iter_node(&self) -> impl Iterator<Item = NodeIndex> + '_ {
         (0..self.values.len())
             .filter(|&i| !self.free.contains(&i))
-            .map(|i| NodeIndex { index_: i })
+            .map(|i| NodeIndex { index: i })
     }
 
     pub fn iter_value(&self) -> impl Iterator<Item = &T> + '_ {
         self.iter_node()
-            .map(move |node| &self.values[node.index_])
+            .map(move |node| &self.values[node.index])
     }
 
     pub fn has_node(&self, node_index: &NodeIndex) -> bool {
@@ -188,56 +203,77 @@ impl <T> Graph<T> {
         else { false }
     }
 
+    pub fn connect_all(&mut self, nodes: &[NodeIndex]) {
+
+        for node in nodes {
+            if !self.is_node_valid(node) {
+                panic!("\n  >>  addr {} invalid\n", node.index)
+            }
+        }
+        
+        for i in 0..nodes.len() {
+            for j in i + 1..nodes.len() {
+                let from = nodes[i];
+                let to = nodes[j];
+                
+                if !self.links[from.index].contains(&to) {
+                    self.links[from.index].push(to);
+                    self.links[to.index].push(from);
+                }
+            }
+        }
+    }
+
     //###########################################################
     // ===  ===  ===  ===  ===  util func  ===  ===  ===  ===  ==
     //###########################################################
     pub fn first_node(&self) -> Option<NodeIndex> {
         if self.values.is_empty() { None } 
-        else { Some(NodeIndex { index_: 0 }) }
+        else { Some(NodeIndex { index: 0 }) }
     }
 
     pub fn get_value_ref(&self, node_index: NodeIndex) -> &T {
-        if self.is_node_valid(&node_index) { &self.values[node_index.index_]}
-        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+        if self.is_node_valid(&node_index) { &self.values[node_index.index]}
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index) }
     }
 
     pub fn get_value_mut_ref(&mut self, node_index: NodeIndex) -> &mut T {
-        if self.is_node_valid(&node_index) { &mut self.values[node_index.index_]}
-        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+        if self.is_node_valid(&node_index) { &mut self.values[node_index.index]}
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index) }
     }
     
     //#[inline(always)]
     fn get_links_from_node_panic(&self, node_index: &NodeIndex) -> &Vec<NodeIndex> {
         if self.is_node_valid(node_index) {
-            if self.links.len() > node_index.index_ { &self.links[node_index.index_] } 
-            else { panic!("\n  >>  no links with {} addr", node_index.index_) }
+            if self.links.len() > node_index.index { &self.links[node_index.index] } 
+            else { panic!("\n  >>  no links with {} addr", node_index.index) }
         } 
-        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index) }
     }
 
     //#[inline(always)]
     fn get_links_from_node_panic_mut(&mut self, node_index: &NodeIndex) -> &mut Vec<NodeIndex> {
         if self.is_node_valid(node_index) {
-            if self.links.len() > node_index.index_ { &mut self.links[node_index.index_] } 
-            else { panic!("\n  >>  no links with {} addr", node_index.index_) }
+            if self.links.len() > node_index.index { &mut self.links[node_index.index] } 
+            else { panic!("\n  >>  no links with {} addr", node_index.index) }
         } 
-        else { panic!("\n  >>  addr {} invalid\n", node_index.index_) }
+        else { panic!("\n  >>  addr {} invalid\n", node_index.index) }
     }
 
     //#[inline(always)]
     fn is_connect_panic(&self, n_i: &NodeIndex, n2_i: &NodeIndex) -> bool {
-        if !self.is_node_valid(n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index_) }
-        if !self.is_node_valid(n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index_) }
+        if !self.is_node_valid(n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index) }
+        if !self.is_node_valid(n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index) }
 
-        if self.links.len() <= n_i.index_ { false } 
-        else if self.links[n_i.index_].contains(&n2_i) { true }
+        if self.links.len() <= n_i.index { false } 
+        else if self.links[n_i.index].contains(&n2_i) { true }
         else { false } 
     }
 
     //#[inline(always)]
     pub fn get_links_from_node(&mut self, node_index: &NodeIndex) -> Option<&Vec<NodeIndex>> {
         if self.is_node_valid(node_index) {
-            if self.links.len() > node_index.index_ { Some(&self.links[node_index.index_]) } 
+            if self.links.len() > node_index.index { Some(&self.links[node_index.index]) } 
             else { None }
         } 
         else { None }
@@ -245,15 +281,15 @@ impl <T> Graph<T> {
 
     //#[inline(always)]
     pub fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
-        if node_index.index_ >= self.count { false }
-        else if self.free.contains(&node_index.index_) { false }
+        if node_index.index >= self.count { false }
+        else if self.free.contains(&node_index.index) { false }
         else { true }
     }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct NodeIndex {
-    index_: usize
+pub struct NodeIndex {
+    index: usize
 }
 
 
@@ -341,7 +377,7 @@ mod tests {
         assert!(graph.is_node_valid(&node2));
         
         // Невалидный индекс
-        let invalid_node = NodeIndex { index_: 999 };
+        let invalid_node = NodeIndex { index: 999 };
         assert!(!graph.is_node_valid(&invalid_node));
     }
 
@@ -355,13 +391,13 @@ mod tests {
         graph.connect(node1, node2);
         
         // Проверяем, что связи добавились
-        assert!(graph.links[node1.index_].contains(&node2));
-        assert!(graph.links[node2.index_].contains(&node1));
+        assert!(graph.links[node1.index].contains(&node2));
+        assert!(graph.links[node2.index].contains(&node1));
         
         // Добавляем еще одну связь
         graph.connect(node1, node3);
-        assert!(graph.links[node1.index_].contains(&node3));
-        assert!(graph.links[node3.index_].contains(&node1));
+        assert!(graph.links[node1.index].contains(&node3));
+        assert!(graph.links[node3.index].contains(&node1));
     }
 
     #[test]
@@ -369,7 +405,7 @@ mod tests {
     fn test_connect_invalid_node() {
         let mut graph = Graph::new();
         let node1 = graph.get_new_node(42);
-        let invalid_node = NodeIndex { index_: 999 };
+        let invalid_node = NodeIndex { index: 999 };
         
         graph.connect(node1, invalid_node);
     }
@@ -392,11 +428,11 @@ mod tests {
         let node2 = graph.get_new_node(100);
         
         graph.connect(node1, node2);
-        assert!(graph.links[node1.index_].contains(&node2));
+        assert!(graph.links[node1.index].contains(&node2));
         
         graph.disconnect(node1, node2);
-        assert!(!graph.links[node1.index_].contains(&node2));
-        assert!(!graph.links[node2.index_].contains(&node1));
+        assert!(!graph.links[node1.index].contains(&node2));
+        assert!(!graph.links[node2.index].contains(&node1));
     }
 
     #[test]
@@ -435,10 +471,10 @@ mod tests {
         
         // Проверяем все связи
         for i in 0..nodes.len() {
-            assert_eq!(graph.links[nodes[i].index_].len(), nodes.len() - 1);
+            assert_eq!(graph.links[nodes[i].index].len(), nodes.len() - 1);
             for j in 0..nodes.len() {
                 if i != j {
-                    assert!(graph.links[nodes[i].index_].contains(&nodes[j]));
+                    assert!(graph.links[nodes[i].index].contains(&nodes[j]));
                 }
             }
         }
@@ -448,13 +484,13 @@ mod tests {
         graph.disconnect(nodes[0], nodes[2]);
         
         // Проверяем результат
-        assert!(!graph.links[nodes[0].index_].contains(&nodes[1]));
-        assert!(!graph.links[nodes[1].index_].contains(&nodes[0]));
-        assert!(!graph.links[nodes[0].index_].contains(&nodes[2]));
-        assert!(!graph.links[nodes[2].index_].contains(&nodes[0]));
+        assert!(!graph.links[nodes[0].index].contains(&nodes[1]));
+        assert!(!graph.links[nodes[1].index].contains(&nodes[0]));
+        assert!(!graph.links[nodes[0].index].contains(&nodes[2]));
+        assert!(!graph.links[nodes[2].index].contains(&nodes[0]));
         
         // Проверяем остальные связи
-        assert!(graph.links[nodes[0].index_].contains(&nodes[3]));
-        assert!(graph.links[nodes[3].index_].contains(&nodes[0]));
+        assert!(graph.links[nodes[0].index].contains(&nodes[3]));
+        assert!(graph.links[nodes[3].index].contains(&nodes[0]));
     }
 }
