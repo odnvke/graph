@@ -1,23 +1,34 @@
-use core::fmt;
+mod connects;
+
 use std::fmt::Debug;
+//use connects;
 
 fn main() {
     let mut g: Graph<i32> = Graph::new();
 
     let mut nodes = Vec::new();
 
-    for i in 0..10_000 {
+    for i in 0..10 {
         nodes.push(g.get_new_node(i));
     }
 
-    g.connect_all(&nodes);
+    g.connect(nodes[0], nodes[1]);
 
-    //println!("{:?}", g.get_links_from_node_panic(&nodes[0]));
-    //println!("{:?}", g.get_links_from_node_panic(&nodes[1]));
+    g.loop_node(&nodes);
 
-    g.del(nodes[2]);
+    println!("{:?}", g);
+}
 
-    //println!("{:?}", g);
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct NodeIndex {
+    index: usize
+}
+
+pub enum NodeError {
+    InvalidIndex(NodeIndex),
+    AlreadyConnect(NodeIndex, NodeIndex),
+    AlreadyDisconnect(NodeIndex, NodeIndex),
+
 }
 
 pub struct Graph<T> {
@@ -25,6 +36,12 @@ pub struct Graph<T> {
     values: Vec<T>,
     links: Vec<Vec<NodeIndex>>,
     free: Vec<usize>,
+}
+
+impl<T> Default for Graph<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
@@ -70,42 +87,37 @@ impl <T> Graph<T> {
         }
     } 
 
-    pub fn connect_panic(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index)}
-        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index)}
+    pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) -> Result<(), NodeError>{
+        if !self.is_node_valid(&n_i) { return Err(NodeError::InvalidIndex(n_i)); }
+        if !self.is_node_valid(&n2_i) { return Err(NodeError::InvalidIndex(n2_i)); }
 
-        if self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already connect with {}", n_i.index, n2_i.index) }
+        if self.is_connect_panic(&n_i, &n2_i) { Err(NodeError::AlreadyConnect(n_i, n2_i)) }
+        else {
+            self.links[n_i.index].push(n2_i);
+            self.links[n2_i.index].push(n_i);
 
-        self.links[n_i.index].push(n2_i);
-        self.links[n2_i.index].push(n_i);
+            Ok(())
+        }
     }
+    
+    pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) -> Result<(), NodeError>{
+        if !self.is_node_valid(&n_i) { return Err(NodeError::InvalidIndex(n_i)); }
+        if !self.is_node_valid(&n2_i) { return Err(NodeError::InvalidIndex(n2_i)); }
 
-    pub fn connect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) {panic!("\n  >>  addr {} invalid\n", n_i.index)}
-        if !self.is_node_valid(&n2_i) {panic!("\n  >>  addr {} invalid\n", n2_i.index)}
-
-        self.links[n_i.index].push(n2_i);
-        self.links[n2_i.index].push(n_i);
-    }
-
-    pub fn disconnect(&mut self, n_i: NodeIndex, n2_i: NodeIndex) {
-        if !self.is_node_valid(&n_i) { panic!("\n  >>  addr {} invalid\n", n_i.index) }
-        if !self.is_node_valid(&n2_i) { panic!("\n  >>  addr {} invalid\n", n2_i.index) }
-
-        if !self.is_connect_panic(&n_i, &n2_i) { panic!("\n  >>  addr {} already not connect with {}", n_i.index, n2_i.index) }
-
-        let n = n_i;
-        let n2 = n2_i;
-
-        let pos_in_min = self.links[n2.index].iter().position(|link| *link == n).unwrap();
-        let pos_in_max = self.links[n.index].iter().position(|link| *link == n2).unwrap();
+        if !self.is_connect_panic(&n_i, &n2_i) { Err(NodeError::AlreadyDisconnect(n_i, n2_i)) }
+        else {       
+            let pos_in_min = self.links[n2_i.index].iter().position(|link| *link == n_i).unwrap();
+            let pos_in_max = self.links[n_i.index].iter().position(|link| *link == n2_i).unwrap();
+            
+            self.links[n2_i.index].swap_remove(pos_in_min);
+            self.links[n_i.index].swap_remove(pos_in_max);
         
-        self.links[n2.index].swap_remove(pos_in_min);
-        self.links[n.index].swap_remove(pos_in_max);
+        Ok(())
+        }
     }
 
-    pub fn del(&mut self, node_index: NodeIndex) {
-        if !self.is_node_valid(&node_index) { 
+    pub fn del(&mut self, node_index: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(&node_index) {
             panic!("\n  >>  addr {} invalid\n", node_index.index);
         }
         
@@ -117,7 +129,7 @@ impl <T> Graph<T> {
             else { Vec::new() };
         
         for neighbor_idx in links {     
-            self.disconnect(neighbor_idx , node_index);
+            self.disconnect(neighbor_idx , node_index)?;
         }
         
         self.free.push(idx);
@@ -199,29 +211,7 @@ impl <T> Graph<T> {
     }
 
     pub fn has_node(&self, node_index: &NodeIndex) -> bool {
-        if self.is_node_valid(node_index) { true }
-        else { false }
-    }
-
-    pub fn connect_all(&mut self, nodes: &[NodeIndex]) {
-
-        for node in nodes {
-            if !self.is_node_valid(node) {
-                panic!("\n  >>  addr {} invalid\n", node.index)
-            }
-        }
-        
-        for i in 0..nodes.len() {
-            for j in i + 1..nodes.len() {
-                let from = nodes[i];
-                let to = nodes[j];
-                
-                if !self.links[from.index].contains(&to) {
-                    self.links[from.index].push(to);
-                    self.links[to.index].push(from);
-                }
-            }
-        }
+        self.is_node_valid(node_index)
     }
 
     //###########################################################
@@ -287,10 +277,6 @@ impl <T> Graph<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct NodeIndex {
-    index: usize
-}
 
 
 
