@@ -1,7 +1,7 @@
 mod impl_;
+mod tests;
 
 use std::fmt::Debug;
-//use connects;
 
 fn main() {
     let mut g: Graph<i32> = Graph::new();
@@ -14,7 +14,7 @@ fn main() {
 
     // g.connect(nodes[0], nodes[1]);
 
-    g.loop_node(&nodes);
+    g.loop_node(nodes);
 
     println!("{:?}", g);
 }
@@ -24,6 +24,7 @@ pub struct NodeIndex {
     index: usize
 }
 
+#[derive(Debug)]
 pub enum NodeError {
     InvalidIndex(NodeIndex),
     SelfLoop(NodeIndex),
@@ -74,7 +75,7 @@ impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
 }
 
 impl <T> Graph<T> where T: Eq {
-    pub fn find(self, value: T) -> Option<NodeIndex> {
+    pub fn find(&self, value: T) -> Option<NodeIndex> {
         self.iter_node()
             .find(|node_index| self.values[node_index.index] == value)
     }
@@ -98,6 +99,13 @@ impl <T> Graph<T> {
         }
     }
 
+    pub fn node_count(&self) -> usize {
+        self.count - self.free.len()
+    }
+
+    pub fn edge_count(&self) -> usize {
+        self.links.iter().map(|v| v.len()).sum::<usize>() / 2
+    }
 
     pub fn iter_node(&self) -> impl Iterator<Item = NodeIndex> + '_ {
         (0..self.values.len())
@@ -122,36 +130,7 @@ impl <T> Graph<T> {
         else { Some(NodeIndex { index: 0 }) }
     }
 
-    pub fn get_value_ref(&self, node_index: NodeIndex) -> Result<&T, NodeError> {
-        if self.is_node_valid(&node_index) { 
-            Ok(&self.values[node_index.index])
-        } else { 
-            Err(NodeError::InvalidIndex(node_index))
-        }
-    }
 
-    pub fn get_value_mut_ref(&mut self, node_index: NodeIndex) -> Result<&mut T, NodeError> {
-        if self.is_node_valid(&node_index) { 
-            Ok(&mut self.values[node_index.index])
-        } else { 
-            Err(NodeError::InvalidIndex(node_index))
-        }
-    }
-
-    //#[inline(always)]
-    fn is_connect(&self, n_i: &NodeIndex, n2_i: &NodeIndex) -> Result<bool, NodeError> {
-        if !self.is_node_valid(n_i) { return Err(NodeError::InvalidIndex(*n_i)); }
-        if !self.is_node_valid(n2_i) { return Err(NodeError::InvalidIndex(*n2_i)); }
-
-        Ok(self.links[n_i.index].contains(&n2_i))
-    }
-
-    //#[inline(always)]
-    pub fn get_links_from_node(&self, node_index: &NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
-        if !self.is_node_valid(node_index) { return Err(NodeError::InvalidIndex(*node_index)); } 
-
-        Ok(&self.links[node_index.index])
-    }
 
     //#[inline(always)]
     pub fn is_node_valid(&self, node_index: &NodeIndex) -> bool {

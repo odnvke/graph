@@ -15,48 +15,58 @@ macro_rules! panic_from_try {
 impl<T> Graph<T> {
     // === TRY_ — Result для обработки ошибок ===
 
-    pub fn try_connect(&mut self, a: NodeIndex, b: NodeIndex) -> Result<(), NodeError> {
-        if !self.is_node_valid(&a) { return Err(NodeError::InvalidIndex(a)); }
-        if !self.is_node_valid(&b) { return Err(NodeError::InvalidIndex(b)); }
+    pub fn try_is_connect(&self, node: &NodeIndex, node2: &NodeIndex) -> Result<bool, NodeError> {
+        if !self.is_node_valid(node) { return Err(NodeError::InvalidIndex(*node)); }
+        if !self.is_node_valid(node2) { return Err(NodeError::InvalidIndex(*node2)); }
 
-        if a == b {
-            return Err(NodeError::SelfLoop(a));
+        Ok(self.links[node.index].contains(&node2))
+    }
+
+    pub fn try_connect(&mut self, node: NodeIndex, node2: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(&node) { return Err(NodeError::InvalidIndex(node)); }
+        if !self.is_node_valid(&node2) { return Err(NodeError::InvalidIndex(node2)); }
+
+        if node == node2 {
+            return Err(NodeError::SelfLoop(node));
         }
 
-        self.links[a.index].push(b);
-        self.links[b.index].push(a);
+        if !self.links[node.index].contains(&node2) {
+            self.links[node.index].push(node2);
+            self.links[node2.index].push(node);
+        }
+
         Ok(())
     }
 
-    pub fn try_disconnect(&mut self, a: NodeIndex, b: NodeIndex) -> Result<(), NodeError> {
-        if !self.is_node_valid(&a) { return Err(NodeError::InvalidIndex(a)); }
-        if !self.is_node_valid(&b) { return Err(NodeError::InvalidIndex(b)); }
+    pub fn try_disconnect(&mut self, node: NodeIndex, node2: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(&node) { return Err(NodeError::InvalidIndex(node)); }
+        if !self.is_node_valid(&node2) { return Err(NodeError::InvalidIndex(node2)); }
 
-        let pos_a = self.links[b.index].iter().position(|&x| x == a).unwrap();
-        let pos_b = self.links[a.index].iter().position(|&x| x == b).unwrap();
-
-        self.links[b.index].swap_remove(pos_a);
-        self.links[a.index].swap_remove(pos_b);
+        if let Some(pos_a) = self.links[node2.index].iter().position(|&x| x == node) {
+            let pos_b = self.links[node.index].iter().position(|&x| x == node2).unwrap();
+            self.links[node2.index].swap_remove(pos_a);
+            self.links[node.index].swap_remove(pos_b);
+        }
         Ok(())
     }
 
-    pub fn try_del(&mut self, node_index: NodeIndex) -> Result<(), NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_del(&mut self, node: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
 
-        let links: Vec<NodeIndex> = self.links[node_index.index].clone();
+        let links: Vec<NodeIndex> = self.links[node.index].clone();
         for neighbor in links {
-            self.try_disconnect(neighbor, node_index)?;
+            self.try_disconnect(neighbor, node)?;
         }
 
-        self.free.push(node_index.index);
+        self.free.push(node.index);
         Ok(())
     }
 
-    pub fn try_bfs(&self, node_index: NodeIndex) -> Result<Vec<NodeIndex>, NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_bfs(&self, node: NodeIndex) -> Result<Vec<NodeIndex>, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
 
         use std::collections::{VecDeque, HashSet};
@@ -65,8 +75,8 @@ impl<T> Graph<T> {
         let mut result = Vec::new();
         let mut queue = VecDeque::new();
 
-        visited.insert(node_index);
-        queue.push_back(node_index);
+        visited.insert(node);
+        queue.push_back(node);
 
         while let Some(node) = queue.pop_front() {
             result.push(node);
@@ -81,16 +91,16 @@ impl<T> Graph<T> {
         Ok(result)
     }
 
-    pub fn try_dfs(&self, start: NodeIndex) -> Result<Vec<NodeIndex>, NodeError> {
-        if !self.is_node_valid(&start) {
-            return Err(NodeError::InvalidIndex(start));
+    pub fn try_dfs(&self, node: NodeIndex) -> Result<Vec<NodeIndex>, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
 
         use std::collections::HashSet;
 
         let mut visited = HashSet::new();
         let mut result = Vec::new();
-        let mut stack = vec![start];
+        let mut stack = vec![node];
 
         while let Some(node) = stack.pop() {
             if !visited.contains(&node) {
@@ -107,36 +117,41 @@ impl<T> Graph<T> {
         Ok(result)
     }
 
-    pub fn try_value(&self, node_index: NodeIndex) -> Result<&T, NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_value(&self, node: NodeIndex) -> Result<&T, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
-        Ok(&self.values[node_index.index])
+        Ok(&self.values[node.index])
     }
 
-    pub fn try_value_mut(&mut self, node_index: NodeIndex) -> Result<&mut T, NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_value_mut(&mut self, node: NodeIndex) -> Result<&mut T, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
-        Ok(&mut self.values[node_index.index])
+        Ok(&mut self.values[node.index])
     }
 
-    pub fn try_links(&self, node_index: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_links(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
-        Ok(&self.links[node_index.index])
+        Ok(&self.links[node.index])
     }
 
-    pub fn try_links_mut(&mut self, node_index: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
-        if !self.is_node_valid(&node_index) {
-            return Err(NodeError::InvalidIndex(node_index));
+    pub fn try_links_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
         }
-        Ok(&mut self.links[node_index.index])
+        Ok(&mut self.links[node.index])
     }
 
-    pub fn try_connect_all(&mut self, nodes: &[NodeIndex]) -> Result<(), NodeError> {
-        for node in nodes {
+    pub fn try_connect_all<I>(&mut self, nodes: I) -> Result<(), NodeError> 
+    where 
+        I: IntoIterator<Item = NodeIndex>,
+    {
+        let nodes: Vec<_> = nodes.into_iter().collect();
+        
+        for node in &nodes {
             if !self.is_node_valid(node) {
                 return Err(NodeError::InvalidIndex(*node));
             }
@@ -151,8 +166,12 @@ impl<T> Graph<T> {
         Ok(())
     }
 
-    pub fn try_loop_node(&mut self, nodes: &[NodeIndex]) -> Result<(), NodeError> {
-        for node in nodes {
+    pub fn try_loop_node<I>(&mut self, nodes: I) -> Result<(), NodeError> 
+    where 
+        I: IntoIterator<Item = NodeIndex>,
+    {
+        let nodes: Vec<_> = nodes.into_iter().collect();
+        for node in &nodes {
             if !self.is_node_valid(node) {
                 return Err(NodeError::InvalidIndex(*node));
             }
@@ -172,48 +191,67 @@ impl<T> Graph<T> {
     panic_from_try!(connect, try_connect, a: NodeIndex, b: NodeIndex);
     panic_from_try!(disconnect, try_disconnect, a: NodeIndex, b: NodeIndex);
     panic_from_try!(del, try_del, idx: NodeIndex);
-    panic_from_try!(connect_all, try_connect_all, nodes: &[NodeIndex]);
-    panic_from_try!(loop_node, try_loop_node, nodes: &[NodeIndex]);
 
-        pub fn bfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
-        match self.try_bfs(start) {
+    pub fn connect_all<I>(&mut self, nodes: I) where I: IntoIterator<Item = NodeIndex> {
+        match self.try_connect_all(nodes) {
+            Ok(()) => (),
+            Err(e) => panic!("connect_all failed: {}", e),
+        }
+    }
+
+    pub fn loop_node<I>(&mut self, nodes: I) where I: IntoIterator<Item = NodeIndex> {
+        match self.try_loop_node(nodes) {
+            Ok(()) => (),
+            Err(e) => panic!("loop_node failed: {}", e),
+        }
+    }
+
+    pub fn bfs(&self, node: NodeIndex) -> Vec<NodeIndex> {
+        match self.try_bfs(node) {
             Ok(v) => v,
             Err(e) => panic!("bfs failed: {}", e),
         }
     }
 
-    pub fn dfs(&self, start: NodeIndex) -> Vec<NodeIndex> {
-        match self.try_dfs(start) {
+    pub fn dfs(&self, node: NodeIndex) -> Vec<NodeIndex> {
+        match self.try_dfs(node) {
             Ok(v) => v,
             Err(e) => panic!("dfs failed: {}", e),
         }
     }
 
-    pub fn value(&self, idx: NodeIndex) -> &T {
-        match self.try_value(idx) {
+    pub fn value(&self, node: NodeIndex) -> &T {
+        match self.try_value(node) {
             Ok(v) => v,
             Err(e) => panic!("value failed: {}", e),
         }
     }
 
-    pub fn value_mut(&mut self, idx: NodeIndex) -> &mut T {
-        match self.try_value_mut(idx) {
+    pub fn value_mut(&mut self, node: NodeIndex) -> &mut T {
+        match self.try_value_mut(node) {
             Ok(v) => v,
             Err(e) => panic!("value_mut failed: {}", e),
         }
     }
 
-    pub fn links(&self, idx: NodeIndex) -> &Vec<NodeIndex> {
-        match self.try_links(idx) {
+    pub fn links(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        match self.try_links(node) {
             Ok(v) => v,
             Err(e) => panic!("links failed: {}", e),
         }
     }
 
-    pub fn links_mut(&mut self, idx: NodeIndex) -> &mut Vec<NodeIndex> {
-        match self.try_links_mut(idx) {
+    pub fn links_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        match self.try_links_mut(node) {
             Ok(v) => v,
             Err(e) => panic!("links_mut failed: {}", e),
+        }
+    }
+
+    pub fn is_connect(&self, node: &NodeIndex, node2: &NodeIndex) -> bool {
+        match self.try_is_connect(node, node2) {
+            Ok(v) => v,
+            Err(e) => panic!("is_connect failed: {}", e),
         }
     }
 }
