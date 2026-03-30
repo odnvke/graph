@@ -338,10 +338,10 @@ mod tests {
         let _n1 = graph.get_new_node(100);
         let _n2 = graph.get_new_node(42);
         
-        let found = graph.find(42);
+        let found = graph.find(&42);
         assert!(found.is_some());
         assert_eq!(found.unwrap().index, n0.index);
-        assert!(graph.find(999).is_none());
+        assert!(graph.find(&999).is_none());
     }
 
     #[test]
@@ -353,8 +353,8 @@ mod tests {
         
         graph.connect(n0, n1);
         
-        assert!(graph.try_is_connect(&n0, &n1).unwrap());
-        assert!(graph.try_is_connect(&n1, &n0).unwrap());
-        assert!(!graph.try_is_connect(&n0, &n2).unwrap());
+        assert!(graph.try_are_connected(&n0, &n1).unwrap());
+        assert!(graph.try_are_connected(&n1, &n0).unwrap());
+        assert!(!graph.try_are_connected(&n0, &n2).unwrap());
     }
 }

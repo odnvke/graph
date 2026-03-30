@@ -15,7 +15,7 @@ macro_rules! panic_from_try {
 impl<T> Graph<T> {
     // === TRY_ — Result для обработки ошибок ===
 
-    pub fn try_is_connect(&self, node: &NodeIndex, node2: &NodeIndex) -> Result<bool, NodeError> {
+    pub fn try_are_connected(&self, node: &NodeIndex, node2: &NodeIndex) -> Result<bool, NodeError> {
         if !self.is_node_valid(node) { return Err(NodeError::InvalidIndex(*node)); }
         if !self.is_node_valid(node2) { return Err(NodeError::InvalidIndex(*node2)); }
 
@@ -46,8 +46,10 @@ impl<T> Graph<T> {
             let pos_b = self.links[node.index].iter().position(|&x| x == node2).unwrap();
             self.links[node2.index].swap_remove(pos_a);
             self.links[node.index].swap_remove(pos_b);
+            Ok(())
+        } else {
+            Err(NodeError::NoEdge(node, node2))
         }
-        Ok(())
     }
 
     pub fn try_del(&mut self, node: NodeIndex) -> Result<(), NodeError> {
@@ -62,6 +64,20 @@ impl<T> Graph<T> {
 
         self.free.push(node.index);
         Ok(())
+    }
+
+    pub fn try_insert(&mut self, node: NodeIndex) -> Result<T, NodeError> {
+        if !self.is_node_valid(&node) {
+            return Err(NodeError::InvalidIndex(node));
+        }
+
+        let links: Vec<NodeIndex> = self.links[node.index].clone();
+        for neighbor in links {
+            self.try_disconnect(neighbor, node)?;
+        }
+
+        self.free.push(node.index);
+        Ok(self.values.insert(node.index, ))
     }
 
     pub fn try_bfs(&self, node: NodeIndex) -> Result<Vec<NodeIndex>, NodeError> {
@@ -248,8 +264,8 @@ impl<T> Graph<T> {
         }
     }
 
-    pub fn is_connect(&self, node: &NodeIndex, node2: &NodeIndex) -> bool {
-        match self.try_is_connect(node, node2) {
+    pub fn are_connected(&self, node: &NodeIndex, node2: &NodeIndex) -> bool {
+        match self.try_are_connected(node, node2) {
             Ok(v) => v,
             Err(e) => panic!("is_connect failed: {}", e),
         }

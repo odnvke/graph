@@ -28,6 +28,7 @@ pub struct NodeIndex {
 pub enum NodeError {
     InvalidIndex(NodeIndex),
     SelfLoop(NodeIndex),
+    NoEdge(NodeIndex, NodeIndex)
 }
 
 impl std::fmt::Display for NodeError {
@@ -39,6 +40,9 @@ impl std::fmt::Display for NodeError {
             NodeError::SelfLoop(idx) => {
                 write!(f, "self-loop not allowed at node {}", idx.index)
             }
+            NodeError::NoEdge(idx, idx2) => {
+                write!(f, "no edge between {} and {}", idx.index, idx2.index)
+            }
         }
     }
 }
@@ -47,7 +51,7 @@ pub struct Graph<T> {
     count: usize,
     values: Vec<T>,
     links: Vec<Vec<NodeIndex>>,
-    free: Vec<usize>,
+    free: Vec<i128>,
 }
 
 impl<T> Default for Graph<T> {
@@ -75,13 +79,25 @@ impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
 }
 
 impl <T> Graph<T> where T: Eq {
-    pub fn find(&self, value: T) -> Option<NodeIndex> {
+    pub fn find(&self, value: &T) -> Option<NodeIndex> {
         self.iter_node()
-            .find(|node_index| self.values[node_index.index] == value)
+            .find(|node_index| self.values[node_index.index] == *value)
     }
 }
 
 impl <T> Graph<T> {
+    pub fn neighbors(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.links(node).iter().copied()
+    }
+
+    pub fn edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + '_ {
+        self.iter_node().flat_map(|from| {
+            self.neighbors(from)
+                .filter(move |&to| from.index < to.index)
+                .map(move |to| (from, to))
+        })
+    }
+
     pub fn new() -> Self {
         Self { count: 0, values: Vec::new(), links: Vec::new(), free: Vec::new() }
     }
@@ -126,14 +142,22 @@ impl <T> Graph<T> {
     // ===  ===  ===  ===  ===  util func  ===  ===  ===  ===  ==
     //###########################################################
     pub fn first_node(&self) -> Option<NodeIndex> {
-        if self.values.is_empty() { None } 
-        else { Some(NodeIndex { index: 0 }) }
+        self.iter_node().next()
     }
 
+    //#[inline(always)]
+    pub fn is_in_free(&self, node: NodeIndex) -> bool {
+        let num = self.free[node.index / 16];
+        match node.index % 16 {
+            0 => {(num & 0x0000_0000_0000_0001) != 0}
+            1 => {(num & 0x0000_0000_0000_0010) != 0}
+        }
+    }
 
+    pub fn set_in_free(&self, node: NodeIndex, value: bool) {}
 
     //#[inline(always)]
-    pub fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
+    fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
         if node_index.index >= self.count { false }
         else if self.free.contains(&node_index.index) { false }
         else { true }
