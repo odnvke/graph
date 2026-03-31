@@ -11,7 +11,7 @@ fn bench_connect_all(c: &mut Criterion) {
             b.iter(|| {
                 let mut g = Graph::new();
                 let nodes: Vec<_> = (0..*size)
-                    .map(|i| g.get_new_node(black_box(i)))
+                    .map(|i| g.new_node(black_box(i)))
                     .collect();
                 g.connect_all(nodes);
             })

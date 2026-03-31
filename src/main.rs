@@ -1,57 +1,59 @@
 mod impl_;
-mod tests;
+mod tests; // если есть
 
-use std::fmt::Debug;
+use std::fmt::{Debug, write};
+use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 
-fn main() {
-    let mut g: Graph<i32> = Graph::new();
-
-    let mut nodes = Vec::new();
-
-    for i in 0..10 {
-        nodes.push(g.get_new_node(i));
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct NodeIndex(DefaultKey);
+impl std::fmt::Display for NodeIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self.data()).trim_end_matches(|c: char| c.is_ascii_digit()).trim_end_matches('v'))
     }
-
-    // g.connect(nodes[0], nodes[1]);
-
-    g.loop_node(nodes);
-
-    println!("{:?}", g);
+}
+impl std::fmt::Debug for NodeIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self.data()).trim_end_matches(|c: char| c.is_ascii_digit()).trim_end_matches('v'))
+    }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct NodeIndex {
-    index: usize
+unsafe impl Key for NodeIndex {
+    fn data(&self) -> KeyData {
+        self.0.data()
+    }
+}
+
+impl From<KeyData> for NodeIndex {
+    fn from(data: KeyData) -> Self {
+        NodeIndex(DefaultKey::from(data))
+    }
 }
 
 #[derive(Debug)]
 pub enum NodeError {
     InvalidIndex(NodeIndex),
     SelfLoop(NodeIndex),
-    NoEdge(NodeIndex, NodeIndex)
+    NoEdge(NodeIndex, NodeIndex),
 }
 
 impl std::fmt::Display for NodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NodeError::InvalidIndex(idx) => {
-                write!(f, "invalid node index: {}", idx.index)
-            }
-            NodeError::SelfLoop(idx) => {
-                write!(f, "self-loop not allowed at node {}", idx.index)
-            }
-            NodeError::NoEdge(idx, idx2) => {
-                write!(f, "no edge between {} and {}", idx.index, idx2.index)
-            }
+            NodeError::InvalidIndex(idx) => write!(f, "invalid node index: {:?}", idx),
+            NodeError::SelfLoop(idx) => write!(f, "self-loop not allowed at node {:?}", idx),
+            NodeError::NoEdge(idx, idx2) => write!(f, "no edge between {:?} and {:?}", idx, idx2),
         }
     }
 }
 
+#[derive(Debug)]
+struct NodeData<T> {
+    value: T,
+    links: Vec<NodeIndex>,
+}
+
 pub struct Graph<T> {
-    count: usize,
-    values: Vec<T>,
-    links: Vec<Vec<NodeIndex>>,
-    free: Vec<i128>,
+    nodes: SlotMap<NodeIndex, NodeData<T>>,
 }
 
 impl<T> Default for Graph<T> {
@@ -60,106 +62,74 @@ impl<T> Default for Graph<T> {
     }
 }
 
-impl<T> std::fmt::Debug for Graph<T> where T: std::fmt::Debug {
+impl<T: Debug> std::fmt::Debug for Graph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut _str = String::new();
-        
-        for (i, elem) in self.links.iter().enumerate() {
-            if !elem.is_empty() {
-                _str.push_str(format!("  from: {}    to: ", i).as_str());
-                for _s in elem {
-                    _str.push_str(format!("{} ", _s.index).as_str());
+        let mut edge_str = String::new();
+        for (from_idx, data) in self.nodes.iter() {
+            if !data.links.is_empty() {
+                edge_str.push('\n');
+                edge_str.push_str(&format!("    from: {:?}    to: ", from_idx.data()));
+                for to_idx in &data.links {
+                    edge_str.push_str(
+                        &format!("{:?}  ", to_idx.data()));
                 }
-                _str.push('\n');
             }
         }
 
-        write!(f, "\nGraph {{\n--------------\nnodes:\n{:#?}\n--------------\nedges:\n{}}}", self.values, _str)
+        let mut vec_str = String::new();
+        let vec_nodes: Vec<NodeIndex> = self.iter_node().collect();
+        let vec_values: Vec<&T> = self.iter_value().collect();
+        assert_eq!(vec_nodes.len(), vec_values.len());
+        for i in 0..vec_nodes.len() {
+            vec_str.push('\n');
+            vec_str.push_str(format!("    {:?}: {:?}", vec_nodes[i].data(), vec_values[i]).as_str());
+        }
+        write!(
+            f,
+            "\nGraph:\n  nodes:{}\n  edges:{}",
+            vec_str,
+            edge_str
+        )
     }
 }
 
-impl <T> Graph<T> where T: Eq {
+impl<T: Eq> Graph<T> {
     pub fn find(&self, value: &T) -> Option<NodeIndex> {
         self.iter_node()
-            .find(|node_index| self.values[node_index.index] == *value)
+            .find(|&node| self.nodes[node].value == *value)
     }
 }
 
-impl <T> Graph<T> {
-    pub fn neighbors(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.links(node).iter().copied()
+impl<T> Graph<T> {
+    pub fn new() -> Self {
+        Self {
+            nodes: SlotMap::with_key(),
+        }
     }
 
-    pub fn edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + '_ {
-        self.iter_node().flat_map(|from| {
-            self.neighbors(from)
-                .filter(move |&to| from.index < to.index)
-                .map(move |to| (from, to))
+    pub fn new_node(&mut self, value: T) -> NodeIndex {
+        self.nodes.insert(NodeData {
+            value,
+            links: Vec::new(),
         })
     }
+}
 
-    pub fn new() -> Self {
-        Self { count: 0, values: Vec::new(), links: Vec::new(), free: Vec::new() }
-    }
+fn main() {
+    let mut g: Graph<i32> = Graph::new();
+    let node1 = g.new_node(10);
+    let node2 = g.new_node(20);
+    let node3 = g.new_node(30);
+    let node4 = g.new_node(40);
 
-    pub fn get_new_node(&mut self, value: T) -> NodeIndex {
-        if self.free.is_empty() {
-            self.values.push(value);
-            self.links.push(Vec::new());
-            self.count += 1;
-            NodeIndex { index: self.values.len()-1}
-        } else {
-            let idx = self.free.pop().unwrap();
-            self.values[idx] = value;
-            NodeIndex { index: idx }
-        }
-    }
+    g.loop_node(vec![node1, node2, node3, node4]);
 
-    pub fn node_count(&self) -> usize {
-        self.count - self.free.len()
-    }
+    println!("{:?}", g.find(&20));
 
-    pub fn edge_count(&self) -> usize {
-        self.links.iter().map(|v| v.len()).sum::<usize>() / 2
-    }
+    g.del(node2);
 
-    pub fn iter_node(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        (0..self.values.len())
-            .filter(|&i| !self.free.contains(&i))
-            .map(|i| NodeIndex { index: i })
-    }
+    g.disconnect(node2, node3);
+    g.disconnect(node2, node3);
 
-    pub fn iter_value(&self) -> impl Iterator<Item = &T> + '_ {
-        self.iter_node()
-            .map(move |node| &self.values[node.index])
-    }
-
-    pub fn has_node(&self, node_index: &NodeIndex) -> bool {
-        self.is_node_valid(node_index)
-    }
-
-    //###########################################################
-    // ===  ===  ===  ===  ===  util func  ===  ===  ===  ===  ==
-    //###########################################################
-    pub fn first_node(&self) -> Option<NodeIndex> {
-        self.iter_node().next()
-    }
-
-    //#[inline(always)]
-    pub fn is_in_free(&self, node: NodeIndex) -> bool {
-        let num = self.free[node.index / 16];
-        match node.index % 16 {
-            0 => {(num & 0x0000_0000_0000_0001) != 0}
-            1 => {(num & 0x0000_0000_0000_0010) != 0}
-        }
-    }
-
-    pub fn set_in_free(&self, node: NodeIndex, value: bool) {}
-
-    //#[inline(always)]
-    fn is_node_valid(&self, node_index: &NodeIndex) -> bool {
-        if node_index.index >= self.count { false }
-        else if self.free.contains(&node_index.index) { false }
-        else { true }
-    }
+    println!("{:?}", g);
 }
