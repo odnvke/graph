@@ -1,6 +1,7 @@
-use crate::{Graph, NodeIndex, NodeError};
-use std::collections::{VecDeque, HashSet};
-use slotmap::SlotMap;
+use crate::{NodeIndex, NodeData, NodeError};
+use slotmap::{SlotMap, Key};
+use std::fmt::{Debug};
+use std::collections::{HashSet, VecDeque};
 
 // Макрос для генерации паникующих обёрток
 macro_rules! panic_from_try {
@@ -14,8 +15,82 @@ macro_rules! panic_from_try {
     };
 }
 
+pub struct Graph<T> {
+    pub nodes: SlotMap<NodeIndex, NodeData<T>>,
+}
+
+impl<T> Default for Graph<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> std::ops::Index<NodeIndex> for Graph<T> {
+    type Output = T;
+    fn index(&self, index: NodeIndex) -> &Self::Output {
+        self.value(index)
+    }
+}
+
+impl<T> std::ops::IndexMut<NodeIndex> for Graph<T> {
+    fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
+        self.value_mut(index)
+    }
+}
+
+impl<T: Debug> std::fmt::Debug for Graph<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut edge_str = String::new();
+        for (from_idx, data) in self.nodes.iter() {
+            if !data.links.is_empty() {
+                edge_str.push('\n');
+                edge_str.push_str(&format!("    from: {:?}    to: ", from_idx.data()));
+                for to_idx in &data.links {
+                    edge_str.push_str(
+                        &format!("{:?}  ", to_idx.data()));
+                }
+            }
+        }
+
+        let mut vec_str = String::new();
+        let vec_nodes: Vec<NodeIndex> = self.iter_node().collect();
+        let vec_values: Vec<&T> = self.iter_value().collect();
+        assert_eq!(vec_nodes.len(), vec_values.len());
+        for i in 0..vec_nodes.len() {
+            vec_str.push('\n');
+            vec_str.push_str(format!("    {:?}: {:?}", vec_nodes[i].data(), vec_values[i]).as_str());
+        }
+        write!(
+            f,
+            "\nGraph:\n  nodes:{}\n  edges:{}",
+            vec_str,
+            edge_str
+        )
+    }
+}
+
+impl<T: Eq> Graph<T> {
+    pub fn find(&self, value: &T) -> Option<NodeIndex> {
+        self.iter_node()
+            .find(|&node| self.nodes[node].value == *value)
+    }
+}
+
 impl<T> Graph<T> {
-    // === TRY_ — Result-версии ===    
+    pub fn new() -> Self {
+        Self {
+            nodes: SlotMap::with_key(),
+        }
+    }
+
+    pub fn new_node(&mut self, value: T) -> NodeIndex {
+        self.nodes.insert(NodeData {
+            value,
+            links: Vec::new(),
+        })
+    }
+
+        // === TRY_ — Result-версии ===    
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -40,7 +115,7 @@ impl<T> Graph<T> {
     }
 
     pub fn try_iter_neighbors(&self, node: NodeIndex) -> Result<impl Iterator<Item = NodeIndex> + '_, NodeError> {
-        Ok(self.try_links(node)?.iter().copied())
+        Ok(self.try_neighbors(node)?.iter().copied())
     }
 
     pub fn iter_edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + '_ {
@@ -192,11 +267,11 @@ impl<T> Graph<T> {
         self.nodes.get_mut(node).map(|data| &mut data.value).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn try_links(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
         self.nodes.get(node).map(|data| &data.links).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn try_links_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
         self.nodes.get_mut(node).map(|data| &mut data.links).ok_or(NodeError::InvalidIndex(node))
     }
 
@@ -290,15 +365,15 @@ impl<T> Graph<T> {
         }
     }
 
-    pub fn links(&self, node: NodeIndex) -> &Vec<NodeIndex> {
-        match self.try_links(node) {
+    pub fn neighbors(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        match self.try_neighbors(node) {
             Ok(v) => v,
             Err(e) => panic!("links failed: {}", e),
         }
     }
 
-    pub fn links_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
-        match self.try_links_mut(node) {
+    pub fn neighbors_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        match self.try_neighbors_mut(node) {
             Ok(v) => v,
             Err(e) => panic!("links_mut failed: {}", e),
         }
