@@ -18,8 +18,8 @@ macro_rules! panic_from_try {
 #[derive(Debug)]
 pub struct NodeData<T> {
     pub value: T,
-    pub linksIn: Vec<NodeIndex>,
-    pub linksOut: Vec<NodeIndex>,
+    pub links_in: Vec<NodeIndex>,
+    pub links_out: Vec<NodeIndex>,
 }
 
 pub struct UGraph<T> {
@@ -51,10 +51,10 @@ impl<T: Debug> std::fmt::Debug for UGraph<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut edge_str = String::new();
         for (from_idx, data) in self.nodes.iter() {
-            if !data.linksOut.is_empty() {
+            if !data.links_out.is_empty() {
                 edge_str.push('\n');
                 edge_str.push_str(&format!("    from: {:?}    to: ", from_idx.data()));
-                for to_idx in &data.linksOut {
+                for to_idx in &data.links_out {
                     edge_str.push_str(&format!("{:?}  ", to_idx.data()));
                 }
             }
@@ -98,8 +98,8 @@ impl<T> UGraph<T> {
     pub fn new_node(&mut self, value: T) -> NodeIndex {
         self.nodes.insert(NodeData {
             value,
-            linksIn: Vec::new(),
-            linksOut: Vec::new(),
+            links_in: Vec::new(),
+            links_out: Vec::new(),
         })
     }
 
@@ -110,7 +110,7 @@ impl<T> UGraph<T> {
 
     pub fn edge_count(&self) -> usize {
         // Для ориентированного графа: сумма длин всех linksOut
-        self.nodes.values().map(|data| data.linksOut.len()).sum()
+        self.nodes.values().map(|data| data.links_out.len()).sum()
     }
 
     pub fn iter_node(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -143,19 +143,19 @@ impl<T> UGraph<T> {
 
     // === Neighbors (исходящие и входящие) ===
     pub fn try_neighbors_out(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
-        self.nodes.get(node).map(|data| &data.linksOut).ok_or(NodeError::InvalidIndex(node))
+        self.nodes.get(node).map(|data| &data.links_out).ok_or(NodeError::InvalidIndex(node))
     }
 
     pub fn try_neighbors_in(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
-        self.nodes.get(node).map(|data| &data.linksIn).ok_or(NodeError::InvalidIndex(node))
+        self.nodes.get(node).map(|data| &data.links_in).ok_or(NodeError::InvalidIndex(node))
     }
 
     pub fn try_neighbors_out_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
-        self.nodes.get_mut(node).map(|data| &mut data.linksOut).ok_or(NodeError::InvalidIndex(node))
+        self.nodes.get_mut(node).map(|data| &mut data.links_out).ok_or(NodeError::InvalidIndex(node))
     }
 
     pub fn try_neighbors_in_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
-        self.nodes.get_mut(node).map(|data| &mut data.linksIn).ok_or(NodeError::InvalidIndex(node))
+        self.nodes.get_mut(node).map(|data| &mut data.links_in).ok_or(NodeError::InvalidIndex(node))
     }
 
     pub fn neighbors_out(&self, node: NodeIndex) -> &Vec<NodeIndex> {
@@ -196,7 +196,7 @@ impl<T> UGraph<T> {
         if !self.is_node_valid(to_node) {
             return Err(NodeError::InvalidIndex(to_node));
         }
-        Ok(self.nodes[from_node].linksOut.contains(&to_node))
+        Ok(self.nodes[from_node].links_out.contains(&to_node))
     }
 
     pub fn try_connect(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<(), NodeError> {
@@ -210,40 +210,55 @@ impl<T> UGraph<T> {
             return Err(NodeError::SelfLoop(from_node));
         }
 
-        if !self.nodes[from_node].linksOut.contains(&to_node) || self.allow_pseudo_graph {
-            self.nodes[from_node].linksOut.push(to_node);
-            self.nodes[to_node].linksIn.push(from_node);
+        if !self.nodes[from_node].links_out.contains(&to_node) || self.allow_pseudo_graph {
+            self.nodes[from_node].links_out.push(to_node);
+            self.nodes[to_node].links_in.push(from_node);
         }
         Ok(())
     }
 
-    pub fn try_disconnect(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<(), NodeError> {
-        if !self.is_node_valid(from_node) {
-            return Err(NodeError::InvalidIndex(from_node));
-        }
-        if !self.is_node_valid(to_node) {
-            return Err(NodeError::InvalidIndex(to_node));
-        }
+    pub fn try_disconnect(&mut self, from: NodeIndex, to: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(from) { return Err(NodeError::InvalidIndex(from)); }
+        if !self.is_node_valid(to) { return Err(NodeError::InvalidIndex(to)); }
 
-        let removed_out = if let Some(pos) = self.nodes[from_node].linksOut.iter().position(|&x| x == to_node) {
-            self.nodes[from_node].linksOut.swap_remove(pos);
-            true
-        } else {
-            false
-        };
+        // Удаляем все вхождения to из linksOut[from]
+        let out = &mut self.nodes[from].links_out;
+        let count_out = out.iter().filter(|&&x| x == to).count();
+        out.retain(|&x| x != to);
 
-        let removed_in = if let Some(pos) = self.nodes[to_node].linksIn.iter().position(|&x| x == from_node) {
-            self.nodes[to_node].linksIn.swap_remove(pos);
-            true
-        } else {
-            false
-        };
+        // Удаляем все вхождения from из linksIn[to]
+        let inp = &mut self.nodes[to].links_in;
+        let count_in = inp.iter().filter(|&&x| x == from).count();
+        inp.retain(|&x| x != from);
 
-        if removed_out && removed_in {
-            Ok(())
-        } else {
-            Err(NodeError::NoEdge(from_node, to_node))
-        }
+        // Для консистентности проверяем, что оба счётчика равны (должны быть)
+        let count = count_out.min(count_in);
+        if count > 0 { Ok(()) } else { Err(NodeError::NoEdge(from, to)) }
+    }
+
+    pub fn try_remove_all_edges(&mut self, node1: NodeIndex, node2: NodeIndex) -> Result<usize, NodeError> {
+        if !self.is_node_valid(node1) { return Err(NodeError::InvalidIndex(node1)); }
+        if !self.is_node_valid(node2) { return Err(NodeError::InvalidIndex(node2)); }
+
+        // Удаляем все вхождения to из linksOut[from]
+        let out = &mut self.nodes[node1].links_out;
+        out.retain(|&x| x != node2);
+
+        // Удаляем все вхождения from из linksIn[to]
+        let inp = &mut self.nodes[node2].links_in;
+        let mut count_in = inp.iter().filter(|&&x| x == node1).count();
+        inp.retain(|&x| x != node1);
+
+        // Удаляем все вхождения to из linksOut[]
+        let out = &mut self.nodes[node2].links_out;
+        out.retain(|&x| x != node1);
+
+        // Удаляем все вхождения from из linksIn[]
+        let inp = &mut self.nodes[node1].links_in;
+        count_in += inp.iter().filter(|&&x| x == node2).count();
+        inp.retain(|&x| x != node2);
+
+        if count_in > 0 { Ok(count_in) } else { Err(NodeError::NoEdge(node1, node2)) }
     }
 
     pub fn try_del(&mut self, node: NodeIndex) -> Result<(), NodeError> {
@@ -252,18 +267,18 @@ impl<T> UGraph<T> {
         }
 
         // Удаляем все входящие рёбра: у каждого предка удаляем ссылку на node из linksOut
-        let incoming: Vec<NodeIndex> = self.nodes[node].linksIn.clone();
+        let incoming: Vec<NodeIndex> = self.nodes[node].links_in.clone();
         for pred in incoming {
-            if let Some(pos) = self.nodes[pred].linksOut.iter().position(|&x| x == node) {
-                self.nodes[pred].linksOut.swap_remove(pos);
+            if let Some(pos) = self.nodes[pred].links_out.iter().position(|&x| x == node) {
+                self.nodes[pred].links_out.swap_remove(pos);
             }
         }
 
         // Удаляем все исходящие рёбра: у каждого потомка удаляем ссылку на node из linksIn
-        let outgoing: Vec<NodeIndex> = self.nodes[node].linksOut.clone();
+        let outgoing: Vec<NodeIndex> = self.nodes[node].links_out.clone();
         for succ in outgoing {
-            if let Some(pos) = self.nodes[succ].linksIn.iter().position(|&x| x == node) {
-                self.nodes[succ].linksIn.swap_remove(pos);
+            if let Some(pos) = self.nodes[succ].links_in.iter().position(|&x| x == node) {
+                self.nodes[succ].links_in.swap_remove(pos);
             }
         }
 
@@ -294,7 +309,7 @@ impl<T> UGraph<T> {
 
         while let Some(node) = queue.pop_front() {
             result.push(node);
-            for &neighbor in &self.nodes[node].linksOut {
+            for &neighbor in &self.nodes[node].links_out {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     queue.push_back(neighbor);
@@ -317,7 +332,7 @@ impl<T> UGraph<T> {
             if !visited.contains(&node) {
                 visited.insert(node);
                 result.push(node);
-                for &neighbor in self.nodes[node].linksOut.iter().rev() {
+                for &neighbor in self.nodes[node].links_out.iter().rev() {
                     if !visited.contains(&neighbor) {
                         stack.push(neighbor);
                     }
@@ -413,5 +428,12 @@ impl<T> UGraph<T> {
 
     pub fn iter_neighbors(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
         self.iter_neighbors_out(node)
+    }
+
+    pub fn remove_all_edges(&mut self, node1: NodeIndex, node2: NodeIndex) -> usize {
+        match self.try_remove_all_edges(node1, node2) {
+            Ok(v) => v,
+            Err(e) => panic!("remove_all_edges: {}", e),
+        }
     }
 }
