@@ -117,6 +117,12 @@ impl<T> UGraph<T> {
         self.nodes.keys()
     }
 
+    pub fn iter_edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + '_ {
+        self.nodes.iter().flat_map(|(from, data)| {
+            data.links_out.iter().map(move |&to| (from, to))
+        })
+    }
+
     pub fn iter_value(&self) -> impl Iterator<Item = &T> + '_ {
         self.nodes.values().map(|data| &data.value)
     }
@@ -197,6 +203,16 @@ impl<T> UGraph<T> {
             return Err(NodeError::InvalidIndex(to_node));
         }
         Ok(self.nodes[from_node].links_out.contains(&to_node))
+    }
+
+    pub fn try_edge_count_between(&self, from_node: NodeIndex, to_node: NodeIndex) -> Result<usize, NodeError> {
+       if !self.is_node_valid(from_node) {
+            return Err(NodeError::InvalidIndex(from_node));
+        }
+        if !self.is_node_valid(to_node) {
+            return Err(NodeError::InvalidIndex(to_node));
+        }
+        Ok(self.nodes[from_node].links_out.iter().filter(|&&x| x == to_node).count())
     }
 
     pub fn try_connect(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<(), NodeError> {
@@ -434,6 +450,13 @@ impl<T> UGraph<T> {
         match self.try_remove_all_edges(node1, node2) {
             Ok(v) => v,
             Err(e) => panic!("remove_all_edges: {}", e),
+        }
+    }
+
+    pub fn edge_count_between(&self, from_node: NodeIndex, to_node: NodeIndex) -> usize {
+        match self.try_edge_count_between(from_node, to_node) {
+            Ok(v) => v,
+            Err(e) => panic!("edge_count_between failed: {}", e),
         }
     }
 }
