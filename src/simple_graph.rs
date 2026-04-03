@@ -1,4 +1,4 @@
-use crate::{NodeIndex, NodeData, NodeError};
+use crate::{NodeIndex, NodeError};
 use slotmap::{SlotMap, Key};
 use std::fmt::{Debug};
 use std::collections::{HashSet, VecDeque};
@@ -13,6 +13,12 @@ macro_rules! panic_from_try {
             }
         }
     };
+}
+
+#[derive(Debug)]
+pub struct NodeData<T> {
+    pub value: T,
+    pub links: Vec<NodeIndex>,
 }
 
 pub struct Graph<T> {
@@ -78,9 +84,7 @@ impl<T: Eq> Graph<T> {
 
 impl<T> Graph<T> {
     pub fn new() -> Self {
-        Self {
-            nodes: SlotMap::with_key(),
-        }
+        Self { nodes: SlotMap::with_key(), }
     }
 
     pub fn new_node(&mut self, value: T) -> NodeIndex {
@@ -135,13 +139,10 @@ impl<T> Graph<T> {
     }
 
     pub fn try_are_connected(&self, node: NodeIndex, node2: NodeIndex) -> Result<bool, NodeError> {
-        if !self.is_node_valid(node) {
-            return Err(NodeError::InvalidIndex(node));
-        }
-        if !self.is_node_valid(node2) {
-            return Err(NodeError::InvalidIndex(node2));
-        }
-        Ok(self.nodes[node].links.contains(&node2))
+        if !self.is_node_valid(node) { Err(NodeError::InvalidIndex(node)) }
+        else if !self.is_node_valid(node2) { Err(NodeError::InvalidIndex(node2)) }
+        
+        else { Ok(self.nodes[node].links.contains(&node2)) }
     }
 
     pub fn try_connect(&mut self, node: NodeIndex, node2: NodeIndex) -> Result<(), NodeError> {

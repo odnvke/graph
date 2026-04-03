@@ -42,8 +42,3 @@ impl std::fmt::Display for NodeError {
     }
 }
 
-#[derive(Debug)]
-pub struct NodeData<T> {
-    pub value: T,
-    pub links: Vec<NodeIndex>,
-}
