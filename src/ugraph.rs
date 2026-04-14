@@ -233,48 +233,39 @@ impl<T> UGraph<T> {
         Ok(())
     }
 
-    pub fn try_disconnect(&mut self, from: NodeIndex, to: NodeIndex) -> Result<(), NodeError> {
-        if !self.is_node_valid(from) { return Err(NodeError::InvalidIndex(from)); }
-        if !self.is_node_valid(to) { return Err(NodeError::InvalidIndex(to)); }
+    pub fn try_disconnect(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<(), NodeError> {
+        if !self.is_node_valid(from_node) { return Err(NodeError::InvalidIndex(from_node)); }
+        if !self.is_node_valid(to_node) { return Err(NodeError::InvalidIndex(to_node)); }
 
         // Удаляем все вхождения to из linksOut[from]
-        let out = &mut self.nodes[from].links_out;
-        let count_out = out.iter().filter(|&&x| x == to).count();
-        out.retain(|&x| x != to);
+        let out = &mut self.nodes[from_node].links_out;
+        let count_out = out.iter().filter(|&&x| x == to_node).count();
+        out.retain(|&x| x != to_node);
 
         // Удаляем все вхождения from из linksIn[to]
-        let inp = &mut self.nodes[to].links_in;
-        let count_in = inp.iter().filter(|&&x| x == from).count();
-        inp.retain(|&x| x != from);
+        let inp = &mut self.nodes[to_node].links_in;
+        let count_in = inp.iter().filter(|&&x| x == from_node).count();
+        inp.retain(|&x| x != from_node);
 
         // Для консистентности проверяем, что оба счётчика равны (должны быть)
         let count = count_out.min(count_in);
-        if count > 0 { Ok(()) } else { Err(NodeError::NoEdge(from, to)) }
+        if count > 0 { Ok(()) } else { Err(NodeError::NoEdge(from_node, to_node)) }
     }
 
-    pub fn try_remove_all_edges(&mut self, node1: NodeIndex, node2: NodeIndex) -> Result<usize, NodeError> {
-        if !self.is_node_valid(node1) { return Err(NodeError::InvalidIndex(node1)); }
-        if !self.is_node_valid(node2) { return Err(NodeError::InvalidIndex(node2)); }
+    pub fn try_remove_all_edges(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<usize, NodeError> {
+        if !self.is_node_valid(from_node) { return Err(NodeError::InvalidIndex(from_node)); }
+        if !self.is_node_valid(to_node) { return Err(NodeError::InvalidIndex(to_node)); }
 
         // Удаляем все вхождения to из linksOut[from]
-        let out = &mut self.nodes[node1].links_out;
-        out.retain(|&x| x != node2);
+        let out = &mut self.nodes[from_node].links_out;
+        out.retain(|&x| x != to_node);
 
         // Удаляем все вхождения from из linksIn[to]
-        let inp = &mut self.nodes[node2].links_in;
-        let mut count_in = inp.iter().filter(|&&x| x == node1).count();
-        inp.retain(|&x| x != node1);
+        let inp = &mut self.nodes[to_node].links_in;
+        let mut count_in = inp.iter().filter(|&&x| x == from_node).count();
+        inp.retain(|&x| x != from_node);
 
-        // Удаляем все вхождения to из linksOut[]
-        let out = &mut self.nodes[node2].links_out;
-        out.retain(|&x| x != node1);
-
-        // Удаляем все вхождения from из linksIn[]
-        let inp = &mut self.nodes[node1].links_in;
-        count_in += inp.iter().filter(|&&x| x == node2).count();
-        inp.retain(|&x| x != node2);
-
-        if count_in > 0 { Ok(count_in) } else { Err(NodeError::NoEdge(node1, node2)) }
+        if count_in > 0 { Ok(count_in) } else { Err(NodeError::NoEdge(from_node, to_node)) }
     }
 
     pub fn try_del(&mut self, node: NodeIndex) -> Result<(), NodeError> {
@@ -282,20 +273,17 @@ impl<T> UGraph<T> {
             return Err(NodeError::InvalidIndex(node));
         }
 
-        // Удаляем все входящие рёбра: у каждого предка удаляем ссылку на node из linksOut
-        let incoming: Vec<NodeIndex> = self.nodes[node].links_in.clone();
-        for pred in incoming {
-            if let Some(pos) = self.nodes[pred].links_out.iter().position(|&x| x == node) {
-                self.nodes[pred].links_out.swap_remove(pos);
-            }
-        }
+        // Собираем уникальных соседей (все, кто есть в links_in или links_out)
+        let mut neighbors = HashSet::new();
+        neighbors.extend(&self.nodes[node].links_in);
+        neighbors.extend(&self.nodes[node].links_out);
 
-        // Удаляем все исходящие рёбра: у каждого потомка удаляем ссылку на node из linksIn
-        let outgoing: Vec<NodeIndex> = self.nodes[node].links_out.clone();
-        for succ in outgoing {
-            if let Some(pos) = self.nodes[succ].links_in.iter().position(|&x| x == node) {
-                self.nodes[succ].links_in.swap_remove(pos);
-            }
+        // Удаляем все рёбра между node и каждым соседом в обе стороны
+        for &neighbor in &neighbors {
+            // из node в neighbor
+            let _ = self.try_remove_all_edges(node, neighbor);
+            // из neighbor в node
+            let _ = self.try_remove_all_edges(neighbor, node);
         }
 
         self.nodes.remove(node);
@@ -446,8 +434,8 @@ impl<T> UGraph<T> {
         self.iter_neighbors_out(node)
     }
 
-    pub fn remove_all_edges(&mut self, node1: NodeIndex, node2: NodeIndex) -> usize {
-        match self.try_remove_all_edges(node1, node2) {
+    pub fn remove_all_edges(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> usize {
+        match self.try_remove_all_edges(from_node, to_node) {
             Ok(v) => v,
             Err(e) => panic!("remove_all_edges: {}", e),
         }
