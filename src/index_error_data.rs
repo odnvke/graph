@@ -25,7 +25,7 @@ impl From<KeyData> for NodeIndex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeError {
     InvalidIndex(NodeIndex),
     SelfLoop(NodeIndex),

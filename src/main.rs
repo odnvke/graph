@@ -1,6 +1,7 @@
 mod simple_graph;
 mod index_error_data;
 mod ugraph;
+mod wugraph;
 mod actor;
 
 use simple_graph::Graph;
