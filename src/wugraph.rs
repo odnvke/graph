@@ -1,7 +1,7 @@
 use crate::{NodeIndex, NodeError};
 use slotmap::{SlotMap, Key};
 use std::fmt::{Debug};
-use std::collections::{HashSet, VecDeque};
+use std::{collections::{HashSet, VecDeque}, rc::Rc};
 
 // Макрос для генерации паникующих обёрток
 macro_rules! panic_from_try {
@@ -16,38 +16,44 @@ macro_rules! panic_from_try {
 }
 
 #[derive(Debug)]
+pub struct LinkData<W> {
+    pub to: NodeIndex,
+    pub link_data: Rc<W>,
+} 
+
+#[derive(Debug)]
 pub struct NodeData<T, W> {
     pub value: T,
-    pub links_in: Vec<(NodeIndex, W)>,
-    pub links_out: Vec<(NodeIndex, W)>,
+    pub links_in: Vec<LinkData<W>>,
+    pub links_out: Vec<LinkData<W>>,
 }
 
-pub struct WUGraph<T> {
-    pub nodes: SlotMap<NodeIndex, NodeData<T>>,
+pub struct WUGraph<T, W> {
+    pub nodes: SlotMap<NodeIndex, NodeData<T, W>>,
     allow_self_loop: bool,
     allow_pseudo_graph: bool
 }
 
-impl<T> Default for WUGraph<T, W> {
+impl<T, W> Default for WUGraph<T, W> {
     fn default() -> Self {
         Self::new(false, false)
     }
 }
 
-impl<T> std::ops::Index<NodeIndex> for WUGraph<T> {
+impl<T, W> std::ops::Index<NodeIndex> for WUGraph<T, W> {
     type Output = T;
     fn index(&self, index: NodeIndex) -> &Self::Output {
         self.value(index)
     }
 }
 
-impl<T> std::ops::IndexMut<NodeIndex> for WUGraph<T> {
+impl<T, W> std::ops::IndexMut<NodeIndex> for WUGraph<T, W> {
     fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
         self.value_mut(index)
     }
 }
 
-impl<T: Debug> std::fmt::Debug for WUGraph<T> {
+impl<T: Debug, W> std::fmt::Debug for WUGraph<T, W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut edge_str = String::new();
         for (from_idx, data) in self.nodes.iter() {
@@ -55,7 +61,7 @@ impl<T: Debug> std::fmt::Debug for WUGraph<T> {
                 edge_str.push('\n');
                 edge_str.push_str(&format!("    from: {:?}    to: ", from_idx.data()));
                 for to_idx in &data.links_out {
-                    edge_str.push_str(&format!("{:?}  ", to_idx.data()));
+                    edge_str.push_str(&format!("{:?}  ", to_idx.to.data()));
                 }
             }
         }
@@ -79,14 +85,14 @@ impl<T: Debug> std::fmt::Debug for WUGraph<T> {
     }
 }
 
-impl<T: Eq> WUGraph<T> {
+impl<T: Eq, W> WUGraph<T, W> {
     pub fn find(&self, value: &T) -> Option<NodeIndex> {
         self.iter_node()
             .find(|&node| self.nodes[node].value == *value)
     }
 }
 
-impl<T> WUGraph<T> {
+impl<T, W> WUGraph<T, W> {
     pub fn new(allow_self_loop: bool, allow_pseudo_graph: bool) -> Self {
         Self {
             nodes: SlotMap::with_key(),
@@ -117,9 +123,9 @@ impl<T> WUGraph<T> {
         self.nodes.keys()
     }
 
-    pub fn iter_edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + '_ {
+    pub fn iter_edges(&self) -> impl Iterator<Item = (NodeIndex, NodeIndex, &W)> + '_ {
         self.nodes.iter().flat_map(|(from, data)| {
-            data.links_out.iter().map(move |&to| (from, to))
+            data.links_out.iter().map(move |to| (from, to.to, &to.link_data.))
         })
     }
 
@@ -148,30 +154,30 @@ impl<T> WUGraph<T> {
     }
 
     // === Neighbors (исходящие и входящие) ===
-    pub fn try_neighbors_out(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors_out(&self, node: NodeIndex) -> Result<&Vec<LinkData<W>>, NodeError> {
         self.nodes.get(node).map(|data| &data.links_out).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn try_neighbors_in(&self, node: NodeIndex) -> Result<&Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors_in(&self, node: NodeIndex) -> Result<&Vec<LinkData<W>>, NodeError> {
         self.nodes.get(node).map(|data| &data.links_in).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn try_neighbors_out_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors_out_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<LinkData<W>>, NodeError> {
         self.nodes.get_mut(node).map(|data| &mut data.links_out).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn try_neighbors_in_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<NodeIndex>, NodeError> {
+    pub fn try_neighbors_in_mut(&mut self, node: NodeIndex) -> Result<&mut Vec<LinkData<W>>, NodeError> {
         self.nodes.get_mut(node).map(|data| &mut data.links_in).ok_or(NodeError::InvalidIndex(node))
     }
 
-    pub fn neighbors_out(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+    pub fn neighbors_out(&self, node: NodeIndex) -> &Vec<LinkData<W>> {
         match self.try_neighbors_out(node) {
             Ok(v) => v,
             Err(e) => panic!("neighbors_out failed: {}", e),
         }
     }
 
-    pub fn neighbors_in(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+    pub fn neighbors_in(&self, node: NodeIndex) -> &Vec<LinkData<W>> {
         match self.try_neighbors_in(node) {
             Ok(v) => v,
             Err(e) => panic!("neighbors_in failed: {}", e),
@@ -179,19 +185,18 @@ impl<T> WUGraph<T> {
     }
 
     pub fn try_iter_neighbors_out(&self, node: NodeIndex) -> Result<impl Iterator<Item = NodeIndex> + '_, NodeError> {
-        Ok(self.try_neighbors_out(node)?.iter().copied())
+        Ok(self.try_neighbors_out(node)?.iter().map(|link| link.to))
     }
-
     pub fn try_iter_neighbors_in(&self, node: NodeIndex) -> Result<impl Iterator<Item = NodeIndex> + '_, NodeError> {
-        Ok(self.try_neighbors_in(node)?.iter().copied())
+        Ok(self.try_neighbors_in(node)?.iter().map(|link| link.to))
     }
 
     pub fn iter_neighbors_out(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.neighbors_out(node).iter().copied()
+        self.neighbors_out(node).iter().map(|link| link.to)
     }
 
     pub fn iter_neighbors_in(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.neighbors_in(node).iter().copied()
+        self.neighbors_in(node).iter().map(|link| link.to)
     }
 
     // === Рёбра ===
@@ -202,7 +207,7 @@ impl<T> WUGraph<T> {
         if !self.is_node_valid(to_node) {
             return Err(NodeError::InvalidIndex(to_node));
         }
-        Ok(self.nodes[from_node].links_out.contains(&to_node))
+        Ok(self.nodes[from_node].links_out.iter().any(|link| link.to == to_node))
     }
 
     pub fn try_edge_count_between(&self, from_node: NodeIndex, to_node: NodeIndex) -> Result<usize, NodeError> {
@@ -212,10 +217,10 @@ impl<T> WUGraph<T> {
         if !self.is_node_valid(to_node) {
             return Err(NodeError::InvalidIndex(to_node));
         }
-        Ok(self.nodes[from_node].links_out.iter().filter(|&&x| x == to_node).count())
+        Ok(self.nodes[from_node].links_out.iter().filter(|x| x.to == to_node).count())
     }
 
-    pub fn try_connect(&mut self, from_node: NodeIndex, to_node: NodeIndex) -> Result<(), NodeError> {
+    pub fn try_connect(&mut self, from_node: NodeIndex, to_node: NodeIndex, weight: W) -> Result<(), NodeError> {
         if !self.is_node_valid(from_node) {
             return Err(NodeError::InvalidIndex(from_node));
         }
@@ -226,9 +231,9 @@ impl<T> WUGraph<T> {
             return Err(NodeError::SelfLoop(from_node));
         }
 
-        if !self.nodes[from_node].links_out.contains(&to_node) || self.allow_pseudo_graph {
-            self.nodes[from_node].links_out.push(to_node);
-            self.nodes[to_node].links_in.push(from_node);
+        if !self.nodes[from_node].links_out.iter().any(|link| link.to == to_node) || self.allow_pseudo_graph {
+            self.nodes[from_node].links_out.push(LinkData { to: to_node, link_data: weight });
+            self.nodes[to_node].links_in.push(LinkData { to: to_node, link_data: weight });
         }
         Ok(())
     }
